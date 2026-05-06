@@ -1,73 +1,82 @@
-# React + TypeScript + Vite
+# feexample
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Web stock workspace built with React, TypeScript, and Vite.
 
-Currently, two official plugins are available:
+The app currently includes:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Stock page with TradingView chart, rankings, search, and entity feeds
+- Market page with indices, commodities, and FX billboard
+- Sector page with keyword-based sector board, mind map, and related-stock queue
 
-## React Compiler
+## Requirements
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js 20 or later recommended
+- npm
 
-## Expanding the ESLint configuration
+## How to run
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. Install dependencies.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+2. Start the development server.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+3. Open the local URL printed by Vite in the terminal.
+
+Usually this is:
+
+```text
+http://localhost:5173
+```
+
+## Production build
+
+Create a production build:
+
+```bash
+npm run build
+```
+
+Preview the built app locally:
+
+```bash
+npm run preview
+```
+
+## Lint
+
+Run ESLint:
+
+```bash
+npm run lint
+```
+
+## Environment variables
+
+This project can run without additional environment variables in its current state.
+
+An example file is included:
+
+```bash
+.env.example
+```
+
+If you later wire in the Alpha Vantage service, create a `.env` file and set:
+
+```bash
+VITE_ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key
+```
+
+## Tech stack
+
+- React 19
+- TypeScript
+- Vite
+- TradingView embed
+- @xyflow/react
