@@ -1,7 +1,6 @@
 import {
   Background,
   Controls,
-  Position,
   ReactFlow,
   type Edge,
   type Node,
@@ -16,7 +15,12 @@ type SectorMindMapProps = {
   selectedNodeId?: string
 }
 
-function resolveMindMapNodeStyle(kind: SectorMindMapNode['kind'], isSelected: boolean) {
+function resolveMindMapNodeStyle(
+  kind: SectorMindMapNode['kind'],
+  strength: number,
+  isSelected: boolean,
+) {
+  const normalizedStrength = Math.min(1, Math.max(0, (strength - 1) / 6))
   const baseStyle = (() => {
     switch (kind) {
       case 'root':
@@ -44,14 +48,14 @@ function resolveMindMapNodeStyle(kind: SectorMindMapNode['kind'], isSelected: bo
       case 'leaf':
       default:
         return {
-          background: 'rgba(255, 255, 255, 0.9)',
-          border: '1px solid rgba(17, 32, 51, 0.12)',
+          background: `rgba(255, 255, 255, ${0.88 + normalizedStrength * 0.08})`,
+          border: `1px solid rgba(17, 32, 51, ${0.12 + normalizedStrength * 0.08})`,
           borderRadius: '14px',
           color: '#25384b',
-          fontSize: '12px',
+          fontSize: `${12 + normalizedStrength * 0.6}px`,
           fontWeight: 600,
-          minWidth: '116px',
-          padding: '10px 13px',
+          minWidth: `${116 + normalizedStrength * 16}px`,
+          padding: `${10 + normalizedStrength * 1.5}px ${13 + normalizedStrength * 3}px`,
         }
     }
   })()
@@ -77,21 +81,20 @@ export function SectorMindMap({ edges, nodes, onSelectNode, selectedNodeId }: Se
     draggable: false,
     position: node.position,
     selectable: false,
-    sourcePosition: Position.Right,
-    style: resolveMindMapNodeStyle(node.kind, selectedNodeId === node.id),
-    targetPosition: Position.Left,
+    style: resolveMindMapNodeStyle(node.kind, node.strength, selectedNodeId === node.id),
   }))
 
   const flowEdges: Edge[] = edges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    type: 'smoothstep',
+    type: 'straight',
     animated: false,
     selectable: false,
     style: {
       stroke: '#92a4b5',
-      strokeWidth: 1.4,
+      strokeOpacity: Math.min(0.9, 0.34 + edge.weight * 0.12),
+      strokeWidth: 1 + Math.min(edge.weight, 4) * 0.42,
     },
   }))
 

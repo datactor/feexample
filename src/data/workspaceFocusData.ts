@@ -69,6 +69,7 @@ export type SectorMindMapNode = {
   label: string
   kind: 'root' | 'branch' | 'leaf'
   path: string[]
+  strength: number
   position: {
     x: number
     y: number
@@ -79,6 +80,7 @@ export type SectorMindMapEdge = {
   id: string
   source: string
   target: string
+  weight: number
 }
 
 type FocusSnapshot = {
@@ -719,108 +721,207 @@ function formatSectorChange(value: number) {
   return `${sign}${value.toFixed(2)}%`
 }
 
-function buildSectorGraph(rootKeyword: string, keywordPaths: string[][]) {
-  type GraphDraftNode = {
-    id: string
-    label: string
-    depth: number
-    children: string[]
-    path: string[]
-  }
+function buildSectorGraph(rootKeyword: string, members: SectorKeywordRecord[]) {
+  const keywordMap = new Map<string, { count: number }>()
+  const edgeMap = new Map<string, { source: string; target: string; weight: number }>()
 
-  const rootId = `${rootKeyword}::root`
-  const nodeMap = new Map<string, GraphDraftNode>([
-    [rootId, { id: rootId, label: rootKeyword, depth: 0, children: [], path: [rootKeyword] }],
-  ])
-  const edgeSet = new Set<string>()
+  for (const member of members) {
+    const memberKeywords = [...new Set(
+      member.keywordPaths
+        .filter((path) => path[0] === rootKeyword)
+        .flatMap((path) => path.slice(1)),
+    )]
 
-  for (const path of keywordPaths) {
-    let parentId = rootId
+    for (const keyword of memberKeywords) {
+      const existing = keywordMap.get(keyword)
 
-    for (let index = 1; index < path.length; index += 1) {
-      const depth = index
-      const label = path[index]
-      const nodeId = `${rootKeyword}::${path.slice(0, index + 1).join('>')}`
+      keywordMap.set(keyword, { count: (existing?.count ?? 0) + 1 })
+    }
 
-      if (!nodeMap.has(nodeId)) {
-        nodeMap.set(nodeId, { id: nodeId, label, depth, children: [], path: path.slice(0, index + 1) })
+    for (let leftIndex = 0; leftIndex < memberKeywords.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < memberKeywords.length; rightIndex += 1) {
+        const [left, right] = [memberKeywords[leftIndex], memberKeywords[rightIndex]].sort((a, b) =>
+          a.localeCompare(b, 'en'),
+        )
+        const edgeId = `${rootKeyword}::edge::${left}::${right}`
+        const existing = edgeMap.get(edgeId)
+
+        edgeMap.set(edgeId, {
+          source: left,
+          target: right,
+          weight: (existing?.weight ?? 0) + 1,
+        })
       }
-
-      const parent = nodeMap.get(parentId)
-
-      if (parent && !parent.children.includes(nodeId)) {
-        parent.children.push(nodeId)
-      }
-
-      edgeSet.add(`${parentId}->${nodeId}`)
-      parentId = nodeId
     }
   }
 
-  for (const node of nodeMap.values()) {
-    node.children.sort((left, right) => {
-      const leftLabel = nodeMap.get(left)?.label ?? left
-      const rightLabel = nodeMap.get(right)?.label ?? right
+  const sortedKeywords = [...keywordMap.entries()]
+    .sort((left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0], 'en'))
+    .map(([keyword]) => keyword)
 
-      return leftLabel.localeCompare(rightLabel, 'en')
-    })
-  }
-
-  let leafCursor = 0
-  const yPositionMap = new Map<string, number>()
-
-  const resolveYPosition = (nodeId: string): number => {
-    const cachedPosition = yPositionMap.get(nodeId)
-
-    if (cachedPosition !== undefined) {
-      return cachedPosition
-    }
-
-    const node = nodeMap.get(nodeId)
-
-    if (!node) {
-      return 0
-    }
-
-    if (node.children.length === 0) {
-      const nextPosition = leafCursor * 96
-
-      leafCursor += 1
-      yPositionMap.set(nodeId, nextPosition)
-
-      return nextPosition
-    }
-
-    const childPositions = node.children.map(resolveYPosition)
-    const averagedPosition = childPositions.reduce((sum, value) => sum + value, 0) / childPositions.length
-
-    yPositionMap.set(nodeId, averagedPosition)
-
-    return averagedPosition
-  }
-
-  resolveYPosition(rootId)
-
-  const nodes: SectorMindMapNode[] = [...nodeMap.values()].map((node) => ({
-    id: node.id,
-    label: node.label,
-    kind: node.depth === 0 ? 'root' : node.children.length > 0 ? 'branch' : 'leaf',
-    path: node.path,
-    position: {
-      x: node.depth * 220,
-      y: (yPositionMap.get(node.id) ?? 0) + 56,
-    },
+  const centerX = 340
+  const centerY = 260
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5))
+  const weightedEdges = [...edgeMap.entries()].map(([edgeId, edge]) => ({
+    id: edgeId,
+    source: edge.source,
+    target: edge.target,
+    weight: edge.weight,
   }))
+  const keywordStrengthMap = new Map(
+    sortedKeywords.map((keyword) => [keyword, keywordMap.get(keyword)?.count ?? 1]),
+  )
 
-  const edges: SectorMindMapEdge[] = [...edgeSet].map((edgeId) => {
-    const [source, target] = edgeId.split('->')
+  for (const edge of weightedEdges) {
+    keywordStrengthMap.set(edge.source, (keywordStrengthMap.get(edge.source) ?? 1) + edge.weight)
+    keywordStrengthMap.set(edge.target, (keywordStrengthMap.get(edge.target) ?? 1) + edge.weight)
+  }
+
+  const maxStrength = sortedKeywords.reduce(
+    (currentMax, keyword) => Math.max(currentMax, keywordStrengthMap.get(keyword) ?? 1),
+    1,
+  )
+  const positions = new Map<string, { x: number; y: number }>()
+  const keywordIndexMap = new Map(sortedKeywords.map((keyword, index) => [keyword, index]))
+
+  sortedKeywords.forEach((keyword, index) => {
+    const angle = index * goldenAngle
+    const strength = keywordStrengthMap.get(keyword) ?? 1
+    const normalizedStrength = (strength - 1) / Math.max(1, maxStrength - 1)
+    const radius = 46 + index * 26 - normalizedStrength * 18
+
+    positions.set(keyword, {
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius * 0.82,
+    })
+  })
+
+  const repulsionStrength = 46000
+  const centerPull = 0.006
+  const maxIterations = 220
+
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    const temperature = 1 - iteration / maxIterations
+    const deltaMap = new Map(sortedKeywords.map((keyword) => [keyword, { x: 0, y: 0 }]))
+
+    for (let leftIndex = 0; leftIndex < sortedKeywords.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < sortedKeywords.length; rightIndex += 1) {
+        const leftKeyword = sortedKeywords[leftIndex]
+        const rightKeyword = sortedKeywords[rightIndex]
+        const leftPosition = positions.get(leftKeyword)
+        const rightPosition = positions.get(rightKeyword)
+
+        if (!leftPosition || !rightPosition) {
+          continue
+        }
+
+        const dx = leftPosition.x - rightPosition.x
+        const dy = leftPosition.y - rightPosition.y
+        const distance = Math.max(Math.hypot(dx, dy), 1)
+        const force = repulsionStrength / (distance * distance)
+        const fx = (dx / distance) * force
+        const fy = (dy / distance) * force
+
+        const leftDelta = deltaMap.get(leftKeyword)
+        const rightDelta = deltaMap.get(rightKeyword)
+
+        if (leftDelta && rightDelta) {
+          leftDelta.x += fx
+          leftDelta.y += fy
+          rightDelta.x -= fx
+          rightDelta.y -= fy
+        }
+      }
+    }
+
+    for (const edge of weightedEdges) {
+      const sourcePosition = positions.get(edge.source)
+      const targetPosition = positions.get(edge.target)
+
+      if (!sourcePosition || !targetPosition) {
+        continue
+      }
+
+      const dx = targetPosition.x - sourcePosition.x
+      const dy = targetPosition.y - sourcePosition.y
+      const distance = Math.max(Math.hypot(dx, dy), 1)
+      const idealLength = Math.max(90, 170 - edge.weight * 18)
+      const springForce = (distance - idealLength) * 0.03 * edge.weight
+      const fx = (dx / distance) * springForce
+      const fy = (dy / distance) * springForce
+
+      const sourceDelta = deltaMap.get(edge.source)
+      const targetDelta = deltaMap.get(edge.target)
+
+      if (sourceDelta && targetDelta) {
+        sourceDelta.x += fx
+        sourceDelta.y += fy
+        targetDelta.x -= fx
+        targetDelta.y -= fy
+      }
+    }
+
+    for (const keyword of sortedKeywords) {
+      const position = positions.get(keyword)
+      const delta = deltaMap.get(keyword)
+      const strength = keywordStrengthMap.get(keyword) ?? 1
+
+      if (!position || !delta) {
+        continue
+      }
+
+      const hubPull = centerPull * Math.min(strength, 7)
+      delta.x += (centerX - position.x) * hubPull
+      delta.y += (centerY - position.y) * hubPull
+
+      const index = keywordIndexMap.get(keyword) ?? 0
+      const maxStep = 10 * temperature + Math.max(0, 4 - index) * 0.8
+
+      position.x += Math.max(-maxStep, Math.min(maxStep, delta.x))
+      position.y += Math.max(-maxStep, Math.min(maxStep, delta.y))
+    }
+  }
+
+  const bounds = [...positions.values()].reduce(
+    (accumulator, position) => ({
+      minX: Math.min(accumulator.minX, position.x),
+      minY: Math.min(accumulator.minY, position.y),
+      maxX: Math.max(accumulator.maxX, position.x),
+      maxY: Math.max(accumulator.maxY, position.y),
+    }),
+    {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    },
+  )
+
+  const offsetX = Number.isFinite(bounds.minX) ? 88 - bounds.minX : 0
+  const offsetY = Number.isFinite(bounds.minY) ? 76 - bounds.minY : 0
+
+  const nodes: SectorMindMapNode[] = sortedKeywords.map((keyword) => {
+    const position = positions.get(keyword) ?? { x: centerX, y: centerY }
 
     return {
-      id: edgeId,
-      source,
-      target,
+      id: `${rootKeyword}::keyword::${keyword}`,
+      label: keyword,
+      kind: 'leaf',
+      path: [keyword],
+      strength: keywordStrengthMap.get(keyword) ?? 1,
+      position: {
+        x: position.x + offsetX,
+        y: position.y + offsetY,
+      },
     }
   })
+
+  const edges: SectorMindMapEdge[] = weightedEdges.map((edge) => ({
+    id: edge.id,
+    source: `${rootKeyword}::keyword::${edge.source}`,
+    target: `${rootKeyword}::keyword::${edge.target}`,
+    weight: edge.weight,
+  }))
 
   return { nodes, edges }
 }
@@ -898,9 +999,11 @@ function buildSectorEntities(cluster: {
 }
 
 function findMatchingKeywordPaths(record: SectorKeywordRecord, keywordPath: string[]) {
-  return record.keywordPaths.filter((path) =>
-    keywordPath.every((keyword, index) => path[index] === keyword),
-  )
+  if (keywordPath.length === 1) {
+    return record.keywordPaths.filter((path) => path.includes(keywordPath[0]))
+  }
+
+  return record.keywordPaths.filter((path) => keywordPath.every((keyword, index) => path[index] === keyword))
 }
 
 function buildSectorStockQueueEntries(members: SectorKeywordRecord[], keywordPath: string[], tab: SectorStockQueueTab) {
@@ -958,14 +1061,8 @@ function buildSectorStockQueues(cluster: {
       const matchingMembers = cluster.members.filter(
         (member) => findMatchingKeywordPaths(member, node.path).length > 0,
       )
-      const subtitle =
-        node.kind === 'root'
-          ? `All ${cluster.members.length} stocks · ${cluster.subtitle}`
-          : `${node.path.join(' > ')} · ${matchingMembers.length} stocks`
-      const overview =
-        node.kind === 'root'
-          ? `A full stock queue connected to the ${cluster.title} root.`
-          : `A re-ranked queue containing only the stocks connected to the ${node.path.join(' > ')} path.`
+      const subtitle = `${node.label} · ${matchingMembers.length} stocks`
+      const overview = `A re-ranked queue containing only the stocks linked to the keyword ${node.label} inside ${cluster.title}.`
 
       return [
         node.id,
@@ -1025,8 +1122,11 @@ function buildSectorClusters(records: SectorKeywordRecord[]) {
 
       const subtitle = topKeywords.slice(0, 3).join(' · ')
       const overview = `${rootKeyword} groups ${members.length} stocks whose keywords repeatedly overlap across news, overview, and status data.`
-      const graph = buildSectorGraph(rootKeyword, keywordPaths)
-      const defaultNodeId = graph.nodes.find((node) => node.kind === 'root')?.id ?? `${rootKeyword}::root`
+      const graph = buildSectorGraph(rootKeyword, members)
+      const defaultNodeId =
+        graph.nodes.find((node) => node.label === topKeywords[0])?.id ??
+        graph.nodes[0]?.id ??
+        `${rootKeyword}::keyword::${topKeywords[0] ?? rootKeyword}`
 
       return {
         id: rootKeyword,
@@ -1122,7 +1222,7 @@ export function resolveSectorWorkspace(sectorId: string): SectorWorkspace {
     subtitle: activeCluster?.subtitle ?? '',
     overview: activeCluster?.overview ?? '',
     board: sectorBoardData,
-    defaultNodeId: activeCluster?.defaultNodeId ?? `${defaultSectorId}::root`,
+    defaultNodeId: activeCluster?.defaultNodeId ?? '',
     graph: activeCluster?.graph ?? { nodes: [], edges: [] },
     stockQueues: activeCluster?.stockQueues ?? {},
     entities: activeCluster?.entities ?? {

@@ -533,7 +533,9 @@ export function StockWorkspace() {
   const [sectorBoardTab, setSectorBoardTab] = useState<SectorBoardTab>('거래대금')
   const [selectedSectorId, setSelectedSectorId] = useState<string>(defaultSectorId)
   const [sectorStockQueueTab, setSectorStockQueueTab] = useState<SectorStockQueueTab>('시가총액')
-  const [selectedSectorNodeId, setSelectedSectorNodeId] = useState<string>(`${defaultSectorId}::root`)
+  const [selectedSectorNodeId, setSelectedSectorNodeId] = useState<string>(() =>
+    resolveSectorWorkspace(defaultSectorId).defaultNodeId,
+  )
   const [selectedSectorStockId, setSelectedSectorStockId] = useState('')
 
   const stockWorkspace = resolveStockWorkspace(selectedSymbol, selectedSearchOption)
@@ -617,8 +619,10 @@ export function StockWorkspace() {
   }
 
   const handleSelectSector = (sectorId: string) => {
+    const nextSectorWorkspace = resolveSectorWorkspace(sectorId)
+
     setSelectedSectorId(sectorId)
-    setSelectedSectorNodeId(`${sectorId}::root`)
+    setSelectedSectorNodeId(nextSectorWorkspace.defaultNodeId)
   }
 
   const pageTitle = pageTab === 'Stock' ? 'Stock Page' : pageTab === 'Market' ? 'Market Page' : 'Sector Page'
